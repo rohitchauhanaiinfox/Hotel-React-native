@@ -16,6 +16,10 @@ import CustomSnackbar from '../components/snackbar';
 import fontFamily from '../components/fontFamily';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import local_storage from '../constants/local_storage';
+import {saveUserData} from '../DataStore/DataStore';
+import {makeApiCall} from '../service/ApiService';
+import {API_CALL_TYPE} from '../utils/AppConstant';
+import {LOGIN_API} from '../service/Api';
 
 const LoginScreen = () => {
   const navigation = useNavigation();
@@ -25,7 +29,7 @@ const LoginScreen = () => {
     formState: {errors},
   } = useForm();
   const [loading, setLoading] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('9877703044');
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarStatus, setSnackbarStatus] = useState(true);
@@ -34,25 +38,58 @@ const LoginScreen = () => {
     console.log(phoneNumber);
     setLoading(true);
     const data1 = {phoneNumber};
-    try {
-      const res = await apiPost('v1/customer/login', data1);
-      console.log(res.data);
-      if (res.status == 200) {
-        await AsyncStorage.setItem(local_storage.Token, res.data.data.token);
-        await AsyncStorage.setItem('Otp' , res.data.data.otp);
-        console.log('token', res.data.data.token);
+    makeApiCall(
+      API_CALL_TYPE.POST_CALL,
+      LOGIN_API(),
+      async response => {
+        const res = response;
+        if (res.status) {
+          await saveUserData(res.data);
+          console.log('LOGIN_API response', res);
+          await AsyncStorage.setItem(local_storage.Token, res.data.token);
+          console.log('token', res.data.token);
+          setLoading(false);
+          navigation.navigate('OtpScreen', {
+            mobile: phoneNumber,
+            otp: res.data.otp,
+          });
+        } else {
+          setSnackbarVisible(true);
+          setLoading(false);
+          setSnackbarMessage(res.data.message);
+          setSnackbarStatus(false);
+        }
+      },
+      error => {
+        console.log(error);
         setLoading(false);
-        navigation.navigate('OtpScreen',{mobile : phoneNumber});
-      } else {
-        setSnackbarVisible(true);
-        setLoading(false);
-        setSnackbarMessage(res.data.message);
-        setSnackbarStatus(false);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      setLoading(false);
-    }
+      },
+      data1,
+      data1,
+    );
+
+    // try {
+
+    //   const res = await apiPost('v1/customer/login', data1);
+
+    //   console.log(res.data);
+    //   if (res.status == 200) {
+    //     saveUserData(res.data.data);
+    //     await AsyncStorage.setItem(local_storage.Token, res.data.data.token);
+    //     await AsyncStorage.setItem('Otp' , res.data.data.otp);
+    //     console.log('token', res.data.data.token);
+    //     setLoading(false);
+    //     navigation.navigate('OtpScreen',{mobile : phoneNumber});
+    //   } else {
+    //     setSnackbarVisible(true);
+    //     setLoading(false);
+    //     setSnackbarMessage(res.data.message);
+    //     setSnackbarStatus(false);
+    //   }
+    // } catch (error) {
+    //   console.error('Error:', error);
+    //   setLoading(false);
+    // }
   };
 
   return (

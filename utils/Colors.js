@@ -1,0 +1,20 @@
+export default {
+    transparent: "rgba(0,0,0,0)",
+    translucent: "rgba(0,0,0,0.4)",
+    translucentWhite: "rgba(255,255,255,0.6)",
+    translucentWhiteXL: "rgba(255,255,255,0.9)",
+    translucentWhiteNew: "rgba(255, 255, 255, 0.3)",
+    homeBg: "#F9F5DD",
+    appColor: "#BD8C2A",
+    appColorSecondary: "#F3E166",
+    buttonBg: "#333334",
+    white: "#fff",
+    black: "#000",
+    gray: "#ccc",
+    lightGray: "#f0f0f0",
+    darkGray: "#333",
+    primary: "#3498db",
+    secondary: "#2ecc71",
+    error: "#e74c3c",
+
+}

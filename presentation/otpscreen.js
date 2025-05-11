@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, {useState, useRef, useEffect, useContext} from 'react';
 import {
   View,
   Text,
@@ -8,16 +8,34 @@ import {
   KeyboardAvoidingView,
   Image,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import Button from '../components/button'; 
+import {useNavigation, useRoute} from '@react-navigation/native';
+import Button from '../components/button';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import local_storage from '../constants/local_storage';
-import { apiPost } from '../service/client';
+import {apiPost} from '../service/client';
 import CustomSnackbar from '../components/snackbar';
+import {
+  getIsLoggedIn,
+  getUserData,
+  saveBookRoomData,
+  saveHotelData,
+  saveUserData,
+  setIsLoggedIn,
+} from '../DataStore/DataStore';
+import {makeApiCall} from '../service/ApiService';
+import {API_CALL_TYPE} from '../utils/AppConstant';
+import {OTP_VERIFY_API} from '../service/Api';
+import AppContext from '../Context/AppContext';
+import {
+  UPDATE_CURRENT_HOTEL,
+  UPDATE_ROOM_DATA,
+  UPDATE_USER_DATA,
+} from '../Context/actionType';
 
 const OtpScreen = () => {
+  const {Context, dispatch} = useContext(AppContext);
   const navigation = useNavigation();
-  const route =  useRoute();
+  const route = useRoute();
   const {mobile} = route.params;
   const [otp, setOtp] = useState('123456');
   const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +49,7 @@ const OtpScreen = () => {
       try {
         const storedOtp = await AsyncStorage.getItem('Otp');
         if (storedOtp) {
-          setOtp(storedOtp); 
+          setOtp(storedOtp);
         }
       } catch (error) {
         console.error('Error fetching OTP from AsyncStorage:', error);
@@ -42,8 +60,8 @@ const OtpScreen = () => {
 
   const handleInputChange = (value, index) => {
     const otpArray = otp.split('');
-    otpArray[index] = value; 
-    setOtp(otpArray.join('')); 
+    otpArray[index] = value;
+    setOtp(otpArray.join(''));
     if (value && index < otp.length - 1) {
       inputs.current[index + 1]?.focus();
     }
@@ -55,46 +73,93 @@ const OtpScreen = () => {
     }
   };
 
-  const handleVerify = async() => {
+  const handleVerify = async () => {
     setIsLoading(true);
     console.log(otp);
-    const data = {otp};
-    try {
-      const res = await apiPost('customers/verify-otp', data);
-      console.log(res.data);
-      if (res.status == 200) {
-        const hotelId = res.data.data.hotelData._id;
-        const userName = res.data.data.user.name;
-        const roomNo = res.data.data.bookRoomData[0].roomData.roomNumber;
-        const category = res.data.data.bookRoomData[0].roomData.category;
-        console.log('htid',hotelId);
-        console.log('booking',category);
-        await AsyncStorage.setItem(local_storage.Token, res.data.data.token);
-        await AsyncStorage.setItem(local_storage.HotelId, hotelId);
-        await AsyncStorage.setItem(local_storage.UserName, userName);
-        await AsyncStorage.setItem(local_storage.PhoneNo, mobile);
-        await AsyncStorage.setItem(local_storage.RoomNo, JSON.stringify(roomNo));
-        await AsyncStorage.setItem(local_storage.RoomType, category);
+    const data = {
+      otp: parseInt(otp, 10), // Convert OTP to integer
+      mobile,
+    };
+    console.log('data', data);
+
+    makeApiCall(
+      API_CALL_TYPE.POST_CALL,
+      OTP_VERIFY_API(),
+      response => {
+        console.log('otp screen response', JSON.stringify(response));
         setIsLoading(false);
-        navigation.navigate('DashBoard');
-      } else {
+
+        if (response.status && response.data) {
+          // Save the token and user data
+          const userData = {
+            ...response.data.user,
+            token: response.data.token,
+          };
+
+          // Save all required data
+          setIsLoggedIn(true).then(() => {
+            dispatch({
+              type: UPDATE_USER_DATA,
+              currentUserData: userData,
+            });
+            saveUserData(userData);
+
+            if (response.data.hotel) {
+              dispatch({
+                type: UPDATE_CURRENT_HOTEL,
+                currentHotelData: response.data.hotel,
+              });
+              saveHotelData(response.data.hotel);
+            }
+
+            if (response.data.bookRoomData) {
+              dispatch({
+                type: UPDATE_ROOM_DATA,
+                currentRoomData: response.data.bookRoomData,
+              });
+              saveBookRoomData(response.data.bookRoomData);
+            }
+
+            // Also save to AsyncStorage for backward compatibility
+            if (response.data.token) {
+              AsyncStorage.setItem(local_storage.Token, response.data.token);
+            }
+
+            // Navigate to dashboard
+            navigation.navigate('DashBoard');
+          });
+        } else {
+          // Handle unsuccessful but not error response
+          setSnackbarVisible(true);
+          setSnackbarMessage(response.message || 'Verification failed');
+          setSnackbarStatus(false);
+        }
+      },
+      error => {
+        console.log('onError', error);
         setSnackbarVisible(true);
         setIsLoading(false);
-        setSnackbarMessage(res.data.message);
+        setSnackbarMessage(
+          error.response?.data?.message || 'Verification failed',
+        );
         setSnackbarStatus(false);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      setIsLoading(false);
-    }
+      },
+      null, // formData parameter (not needed for JSON)
+      data, // body parameter - this is your JSON data with integer OTP
+      {'Content-Type': 'application/json'}, // Explicitly set content type to JSON
+    );
   };
-
 
   return (
     <KeyboardAvoidingView style={styles.container} behavior="padding">
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Image source={require('../assets/images/arrow_back.png')} style={styles.backIcon} />
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}>
+          <Image
+            source={require('../assets/images/arrow_back.png')}
+            style={styles.backIcon}
+          />
         </TouchableOpacity>
       </View>
       <Text style={styles.title}>6-digit code</Text>
@@ -103,19 +168,19 @@ const OtpScreen = () => {
         Code sent to +91 {mobile} unless you already have an account
       </Text>
       <View style={styles.otpContainer}>
-      {otp.split('').map((digit, index) => (
-        <TextInput
-          key={index}
-          value={digit}
-          onChangeText={(value) => handleInputChange(value, index)}
-          onKeyPress={(e) => handleKeyPress(e, index)}
-          keyboardType="numeric"
-          maxLength={1}
-          ref={(input) => (inputs.current[index] = input)}
-          style={styles.otpInput}
-        />
-      ))}
-    </View>
+        {otp.split('').map((digit, index) => (
+          <TextInput
+            key={index}
+            value={digit}
+            onChangeText={value => handleInputChange(value, index)}
+            onKeyPress={e => handleKeyPress(e, index)}
+            keyboardType="numeric"
+            maxLength={1}
+            ref={input => (inputs.current[index] = input)}
+            style={styles.otpInput}
+          />
+        ))}
+      </View>
 
       <Text style={styles.resendText}>Resend code in 00:18</Text>
       <Text style={styles.loginText}>Already have an account? Log in</Text>
@@ -126,7 +191,7 @@ const OtpScreen = () => {
         onPress={handleVerify}
         loading={isLoading}
       />
-       <CustomSnackbar
+      <CustomSnackbar
         visible={snackbarVisible}
         message={snackbarMessage}
         status={snackbarStatus}
@@ -146,7 +211,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 10,
-    marginTop : 20
+    marginTop: 20,
   },
   backButton: {
     width: 25,
@@ -195,8 +260,8 @@ const styles = StyleSheet.create({
     textAlign: 'start',
   },
   button: {
-    backgroundColor: '#BD8C2A', 
-    margin : "auto",
+    backgroundColor: '#BD8C2A',
+    margin: 'auto',
     width: '100%',
     borderRadius: 30,
   },
